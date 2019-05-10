@@ -1,107 +1,171 @@
-//begin script when window loads
-window.onload = setMap();
+//First line of main.js wraps everything in a self-executing anonymous function to move to local scope
+(function(){
 
-//Example 1.4 line 1...set up choropleth map
-function setMap(){
+		//assigns attributes to an array
+		var attrArray = ["Bio", "Name", "Search_Name"];
+		var expressed = attrArray[0];
+		
+		//sets panel size for information
+		var panelWidth = window.innerWidth * 0.15, 
+			panelHeight = 950;
+				
+	//begin script when window loads
+	window.onload = setMap();
+
+	//sets up middle earth map
+	function setMap(){
+
+		//map frame dimensions, percent of screen 
+		var width = window.innerWidth * 0.8,
+			height = 950;
+			
+		//create new svg container for the map
+		var map = d3.select("body")
+				.append("svg")
+				.attr("class", "map")
+				.attr("width", width)
+				.attr("height", height);
+				
+		//middle earth projected onto a real world location, it is a tiny location off of the coast of africa and needs to be extremely zoomed in
+		var projection = d3.geoAlbers()
+				.center([0, -.12])
+				.rotate([-.10, 0])
+				.parallels([0, 90])
+				.scale(220000)
+				.translate([width / 2, height / 2]);
+			
+		
+		var path = d3.geoPath()
+				.projection(projection);
+			
+		//use Promise.all to parallelize asynchronous data loading
+		var promises = [];
+		promises.push(d3.json("data/Middle_Earth_Reproj.topojson")); //load background spatial data
+		Promise.all(promises).then(callback);
+
+		
+		function callback(data){ 
+			
+			middleEarth = data[0];
+			
+			
+			//translate Middle Earth TopoJSON
+			var middle_Earth_features = topojson.feature(middleEarth, middleEarth.objects.Middle_Earth_prj_dissolved).features;
+			
+			//add middle earth countries to map  
+			var middle_Earth = map.selectAll(".middle_Earth")
+				.data(middle_Earth_features)
+				.enter()
+				.append("path")
+				.attr("class", function(d){
+					return "middle_Earth " + "a" + d.properties.Id;
+				})
+				//click to on a specific location to retreive the bio for it
+				.attr("d", path)
+				.on("click", function(d){
+					d3.select(".panel").remove();
+					setBios(d.properties)
+				})
+				//hover mouse over an area to highlight it for an affordance
+				.on("mouseover", function(d){
+					if (d.properties.Id != 0) {highlight(d.properties)};
+				})
+				//dehighlight it function so that the highlighting goes away
+				.on("mouseout", function(d){
+					dehighlight(d.properties);
+				})
+            
+			//add style descriptor to each path
+            var desc = middle_Earth.append("desc")
+                .text('{"stroke": "#000", "stroke-width": "0.20px"}');
+		   
+			//zoom and pan code
+			var rootSVG = d3.select('.map');
+			var treeGroup = d3.selectAll('.middle_Earth');
+				rootSVG.call(d3.zoom().on('zoom', function() {
+				treeGroup.attr('transform', d3.event.transform);
+			}));   
+				
+            // Create form for search (see function below).
+            var search = d3.select("body").append('form').attr('onsubmit', 'return false;');
+
+            var box = search.append('input')
+                .attr('type', 'text')
+                .attr('id', 'searchTerm')
+                .attr('placeholder', 'Type to search...');
+            
+            var button = search.append('input')
+                .attr('type', 'button')
+                .attr('value', 'Search')
+                .on('click', function(){ 
+                    searchMiddleEarth(middle_Earth_features);
+                });
+
+
+		};
+		};   
+		  
+		//function for the bios
+		function setBios(props){
+
+			var panel = d3.select("body")
+				.append("div")
+                .attr("class", "panel")
+				.attr("width", panelWidth)
+				.attr("height", panelHeight)
+				
+				
+			var info = panel.append("text")
+				.text(props.Bio);
+		};	
+				
+		//function to highlight enumeration units
+		function highlight(props){
+			//change stroke
+			var selected = d3.selectAll(".a" + props.Id)
+				.style("stroke", "gold")
+				.style("stroke-width", "1");
+		};
+		
+		//function to reset the element style on mouseout
+		function dehighlight(props){
+			var selected = d3.selectAll('.a' + props.Id)
+				.style("stroke", function(){
+					return getStyle(this, "stroke")
+				})
+				.style("stroke-width", function(){
+					return getStyle(this, "stroke-width")
+				});
+		     function getStyle(element, styleName){
+				var styleText = d3.select(element)
+					.select("desc")
+					.text();
+
+				var styleObject = JSON.parse(styleText);
+
+				return styleObject[styleName];
+			};  
+		};
     
-    //use Promise.all to parallelize asynchronous data loading
-    var promises = [];
-    promises.push(d3.csv("data/unitsData.csv")); //load attributes from csv
-    promises.push(d3.json("data/Middle_Earth_Reproj.topojson")); //load background spatial data
+        // Search function
+        function searchMiddleEarth(middle_Earth_features) {
+            
+            
+            var term = document.getElementById('searchTerm').value;
+            //console.log(middle_Earth_features.length);
 
-    Promise.all(promises).then(callback);
+            for (var i=0; i<middle_Earth_features.length; i++){
+		        var name = middle_Earth_features[i].properties.Search_Nam; 
+		        if (term == name) {
+		            // show new panel
+		            d3.select(".panel").remove();
+					setBios(middle_Earth_features[i].properties);
+		        };
+    		};
 
-    function callback(data){
-        csvData = data[0];
-        middleEarth = data[1];
-        
-        //map frame dimensions
-        var width = 1500,
-            height = 950;
+            
 
-        //create new svg container for the map
-        var map = d3.select("body")
-            .append("svg")
-            .attr("class", "map")
-            .attr("width", width)
-            .attr("height", height);
-
-       //Example 2.1 line 15...create Albers equal area conic projection centered on France
-        var projection = d3.geoAlbers()
-            .center([0, -.0599])
-            .rotate([-.097, 0])
-            .parallels([0, 90])
-            .scale(460000)
-            .translate([width / 2, height / 2]);
-        
-        var path = d3.geoPath()
-            .projection(projection);
-
-        //translate Middle Earth TopoJSON
-        var middle_Earth = topojson.feature(middleEarth, middleEarth.objects.Middle_Earth_Reproj);
-
-//        //add Europe countries to map
-//        var middle_Earth = map.append("path")
-//            .datum(middle_Earth)
-//            .attr("class", "countries")
-//            .attr("d", path);
-                
-        //add Europe countries to map  
-        var middle_Earth = map.selectAll(".Id")
-            .data(middle_Earth)
-            .enter()
-            .append("path")
-            .attr("class", function(d){
-                return "middle_Earth " + d.properties.Id;
-            })
-            .attr("d", path);
-//        
-//        var zoom = d3.zoom()
-//            .scaleExtent([1, 40])
-//            .translateExtent([[-100, -100], [width + 90, height + 100]])
-//            .on("zoom", zoomed);
-//
-//        var x = d3.scaleLinear()
-//            .domain([-1, width + 1])
-//            .range([-1, width + 1]);
-//
-//        var y = d3.scaleLinear()
-//            .domain([-1, height + 1])
-//            .range([-1, height + 1]);
-//
-//        var xAxis = d3.axisBottom(x)
-//            .ticks((width + 2) / (height + 2) * 10)
-//            .tickSize(height)
-//            .tickPadding(8 - height);
-//
-//        var yAxis = d3.axisRight(y)
-//            .ticks(10)
-//            .tickSize(width)
-//            .tickPadding(8 - width);
-//
-//        var view = map.append("rect")
-//            .attr("class", "view")
-//            .attr("x", 0.5)
-//            .attr("y", 0.5)
-//            .attr("width", width - 1)
-//            .attr("height", height - 1);
-//
-//        var gX = map.append("g")
-//            .attr("class", "axis axis--x")
-//            .call(xAxis);
-//
-//        var gY = map.append("g")
-//            .attr("class", "axis axis--y")
-//            .call(yAxis);
-//        
-//        function zoomed() {
-//            view.attr("transform", d3.event.transform);
-//            gX.call(xAxis.scale(d3.event.transform.rescaleX(x)));
-//            gY.call(yAxis.scale(d3.event.transform.rescaleY(y)));
-//        }
-//        
-//        map.call(d3.zoom()
-//        .scaleExtent([1 / 2, 4])
-//        .on("zoom", zoomed));
-    };
-};
+        }
+    
+    
+})(); //last line of main.js
